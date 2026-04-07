@@ -1,0 +1,17 @@
+[workspace]
+resolver = "2"
+members = ["crates/aegis-vault"]
+
+[workspace.package]
+version       = "0.1.0"
+edition       = "2021"
+rust-version  = "1.78"
+license       = "Apache-2.0"
+repository    = "https://github.com/cyberdione/aegis-vault"
+authors       = ["Cyberdione <https://github.com/cyberdione>"]
+
+[profile.release]
+opt-level = "z"
+lto       = true
+strip     = true
+codegen-units = 1

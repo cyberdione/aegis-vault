@@ -1,0 +1,63 @@
+{
+  "name": "@cyberdione/aegis-vault-web",
+  "version": "0.1.0",
+  "description": "Encrypted browser identity vault — passphrase + WebAuthn-PRF, AES-256-GCM at rest, HSM-shaped per-purpose Ed25519 signing slots. Web bindings + React provider.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cyberdione/aegis-vault.git",
+    "directory": "packages/aegis-vault-web"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./react": {
+      "types": "./dist/react/index.d.ts",
+      "import": "./dist/react/index.js"
+    },
+    "./pkg/*": "./pkg/*"
+  },
+  "files": [
+    "dist",
+    "pkg",
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "build:wasm": "(cd ../.. && wasm-pack build crates/aegis-vault --release --target web --out-dir packages/aegis-vault-web/pkg)",
+    "build:ts": "tsc -p tsconfig.json",
+    "build": "npm run build:wasm && npm run build:ts",
+    "clean": "rm -rf dist pkg"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0 || ^19.0.0"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "@types/react": "^18.2.0",
+    "react": "^18.2.0"
+  },
+  "keywords": [
+    "vault",
+    "argon2",
+    "ed25519",
+    "webauthn",
+    "browser",
+    "indexeddb",
+    "hsm"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

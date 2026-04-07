@@ -1,0 +1,27 @@
+# Rust
+target/
+**/*.rs.bk
+Cargo.lock
+
+# Wasm-pack output (rebuilt by every consumer; never committed)
+packages/aegis-vault-web/pkg/
+
+# TypeScript build output (rebuilt; never committed)
+packages/aegis-vault-web/dist/
+
+# Node
+node_modules/
+npm-debug.log*
+.npm/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# OS / misc
+*.log
+.env
+.env.local

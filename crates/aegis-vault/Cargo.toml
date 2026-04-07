@@ -1,0 +1,51 @@
+[package]
+name        = "aegis-vault"
+description = "Encrypted browser identity vault: passphrase + WebAuthn-PRF, AES-256-GCM at rest, HSM-shaped per-purpose Ed25519 signing slots."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+repository.workspace   = true
+authors.workspace      = true
+readme                 = "../../README.md"
+categories             = ["cryptography", "wasm", "authentication"]
+keywords               = ["vault", "argon2", "ed25519", "webauthn", "browser"]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+wasm-bindgen   = "0.2"
+js-sys         = "0.3"
+serde          = { version = "1", features = ["derive"] }
+serde_json     = "1"
+serde-wasm-bindgen = "0.6"
+thiserror      = "1"
+zeroize        = { version = "1", features = ["derive"] }
+getrandom      = { version = "0.2", features = ["js"] }
+
+# KDF
+argon2         = { version = "0.5", default-features = false, features = ["alloc"] }
+
+# AEAD
+aes-gcm        = { version = "0.10", default-features = false, features = ["alloc", "aes"] }
+
+# MAC / HKDF
+hkdf           = "0.12"
+sha2           = "0.10"
+hmac           = "0.12"
+
+# Signatures
+ed25519-dalek  = { version = "2", default-features = false, features = ["zeroize", "digest", "rand_core"] }
+x25519-dalek   = { version = "2", default-features = false, features = ["zeroize", "static_secrets"] }
+
+[features]
+default = []
+# Phase B placeholder — compiles a WASI binary variant for in-Wanix deployment.
+# Not used in v0.1; reserved so consumers see the feature flag exists.
+wanix-worker = []
+
+[package.metadata.wasm-pack.profile.release]
+# --enable-simd is required because we build with RUSTFLAGS=-C target-feature=+simd128
+# (~30% Argon2id speedup on browsers that support WebAssembly SIMD).
+wasm-opt = ["-Oz", "--enable-bulk-memory", "--enable-simd"]
