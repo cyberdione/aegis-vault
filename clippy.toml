@@ -1,0 +1,17 @@
+# Clippy configuration for aegis-vault.
+#
+# Mirrors the Hyprstream/hyprstream project's clippy.toml so the two
+# codebases share a single security + hygiene policy. The disallowed
+# types list forbids std::sync locks in favor of parking_lot's versions
+# (no lock poisoning, cleaner API, slightly better performance).
+#
+# Note: aegis-vault v0.3.x does not depend on parking_lot and does not
+# currently use any locks. This config is forward-facing — if the crate
+# ever adds synchronization primitives (e.g., for a multi-vault cache
+# or cross-worker coordination), it will default to parking_lot from
+# day one rather than getting tangled in std lock semantics mid-refactor.
+
+disallowed-types = [
+    { path = "std::sync::Mutex", reason = "Use parking_lot::Mutex instead - no poison, cleaner API" },
+    { path = "std::sync::RwLock", reason = "Use parking_lot::RwLock instead - no poison, cleaner API" },
+]

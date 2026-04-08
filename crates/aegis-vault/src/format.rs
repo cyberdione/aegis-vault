@@ -122,7 +122,9 @@ pub struct MetaHeader {
 }
 
 impl MetaHeader {
-    pub fn encode(&self) -> Vec<u8> {
+    pub fn encode(&self) -> Result<Vec<u8>, VaultError> {
+        let wa_len: u16 = u16::try_from(self.webauthn_blob.len())
+            .map_err(|_| VaultError::Format("webauthn blob exceeds u16::MAX"))?;
         let mut out = Vec::with_capacity(META_HEADER_LEN + self.webauthn_blob.len());
         out.push(self.version);
         out.push(self.kdf_id);
@@ -133,14 +135,9 @@ impl MetaHeader {
         out.extend_from_slice(&self.kdf_salt);
         out.extend_from_slice(&self.root_seed_iv);
         out.extend_from_slice(&self.root_seed_ct);
-        let wa_len: u16 = self
-            .webauthn_blob
-            .len()
-            .try_into()
-            .expect("webauthn blob fits in u16");
         out.extend_from_slice(&wa_len.to_le_bytes());
         out.extend_from_slice(&self.webauthn_blob);
-        out
+        Ok(out)
     }
 
     pub fn decode(buf: &[u8]) -> Result<Self, VaultError> {
@@ -155,8 +152,9 @@ impl MetaHeader {
         if kdf_id != KDF_ARGON2ID {
             return Err(VaultError::Format("unsupported KDF"));
         }
-        let argon2_m = u32::from_le_bytes(buf[2..6].try_into().unwrap());
-        let argon2_t = u16::from_le_bytes(buf[6..8].try_into().unwrap());
+        // Direct byte indexing: buf length ≥ META_HEADER_LEN was checked above.
+        let argon2_m = u32::from_le_bytes([buf[2], buf[3], buf[4], buf[5]]);
+        let argon2_t = u16::from_le_bytes([buf[6], buf[7]]);
         let argon2_p = buf[8];
         let aead_id = buf[9];
         if aead_id != AEAD_AES256GCM {
@@ -170,7 +168,7 @@ impl MetaHeader {
         root_seed_ct.copy_from_slice(&buf[54..54 + ROOT_SEED_CT_LEN]);
 
         let wa_len_off = 54 + ROOT_SEED_CT_LEN;
-        let wa_len = u16::from_le_bytes(buf[wa_len_off..wa_len_off + 2].try_into().unwrap()) as usize;
+        let wa_len = u16::from_le_bytes([buf[wa_len_off], buf[wa_len_off + 1]]) as usize;
         let wa_start = wa_len_off + 2;
         if buf.len() < wa_start + wa_len {
             return Err(VaultError::Format("meta blob webauthn payload truncated"));
@@ -225,7 +223,9 @@ impl PageHeader {
             return Err(VaultError::Format("unsupported page blob version"));
         }
         let page_id = PageId::from_byte(buf[1]);
-        let counter = u64::from_le_bytes(buf[2..10].try_into().unwrap());
+        let counter = u64::from_le_bytes([
+            buf[2], buf[3], buf[4], buf[5], buf[6], buf[7], buf[8], buf[9],
+        ]);
         let mut iv = [0u8; AEAD_NONCE_LEN];
         iv.copy_from_slice(&buf[10..10 + AEAD_NONCE_LEN]);
         Ok((
@@ -241,6 +241,7 @@ impl PageHeader {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::str_to_string)]
 mod tests {
     use super::*;
 
@@ -258,7 +259,7 @@ mod tests {
             root_seed_ct: [0xCD; ROOT_SEED_CT_LEN],
             webauthn_blob: Vec::new(),
         };
-        let encoded = h.encode();
+        let encoded = h.encode().unwrap();
         let decoded = MetaHeader::decode(&encoded).unwrap();
         assert_eq!(decoded.version, META_VERSION);
         assert_eq!(decoded.argon2_m, ARGON2_M_KIB);
@@ -282,7 +283,7 @@ mod tests {
             root_seed_ct: [0x03; ROOT_SEED_CT_LEN],
             webauthn_blob: wa.clone(),
         };
-        let encoded = h.encode();
+        let encoded = h.encode().unwrap();
         let decoded = MetaHeader::decode(&encoded).unwrap();
         assert_eq!(decoded.webauthn_blob, wa);
     }

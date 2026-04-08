@@ -71,10 +71,7 @@ impl Vault {
     /// caller chose to enroll a hardware second factor. Pass `None` for
     /// passphrase-only.
     #[wasm_bindgen(js_name = createNew)]
-    pub fn create_new(
-        passphrase: &str,
-        prf_output: Option<Vec<u8>>,
-    ) -> Result<Vault, JsError> {
+    pub fn create_new(passphrase: &str, prf_output: Option<Vec<u8>>) -> Result<Vault, JsError> {
         Self::create_new_impl(passphrase, prf_output.as_deref()).map_err(JsError::from)
     }
 
@@ -99,9 +96,8 @@ impl Vault {
 
         // Encrypt the root seed for storage.
         let mut root_seed_iv = [0u8; AEAD_NONCE_LEN];
-        getrandom::getrandom(&mut root_seed_iv)
-            .map_err(|_| VaultError::Internal("getrandom"))?;
-        let root_seed_ct = encrypt_root_seed(&*meta_key, &root_seed_iv, &*root_seed)?;
+        getrandom::getrandom(&mut root_seed_iv).map_err(|_| VaultError::Internal("getrandom"))?;
+        let root_seed_ct = encrypt_root_seed(&meta_key, &root_seed_iv, &root_seed)?;
 
         // Build the meta blob. WebAuthn cred storage is currently TS-side
         // (passed into create on each unlock), so meta_webauthn_blob is empty
@@ -118,7 +114,7 @@ impl Vault {
             root_seed_ct,
             webauthn_blob: Vec::new(),
         };
-        let meta_blob = header.encode();
+        let meta_blob = header.encode()?;
 
         Ok(Vault {
             root_seed,
@@ -145,8 +141,7 @@ impl Vault {
     ) -> Result<Vault, VaultError> {
         let header = MetaHeader::decode(meta_blob)?;
         let meta_key = derive_meta_key(passphrase.as_bytes(), &header.kdf_salt, prf_output)?;
-        let root_seed =
-            decrypt_root_seed(&*meta_key, &header.root_seed_iv, &header.root_seed_ct)?;
+        let root_seed = decrypt_root_seed(&meta_key, &header.root_seed_iv, &header.root_seed_ct)?;
         Ok(Vault {
             root_seed,
             meta_blob: meta_blob.to_vec(),
@@ -196,8 +191,8 @@ impl Vault {
     /// Subsequent `pageGet`/`pageSet` calls operate on the loaded state.
     #[wasm_bindgen(js_name = pageLoad)]
     pub fn page_load(&mut self, name: &str, ciphertext: &[u8]) -> Result<(), JsError> {
-        let state = decrypt_page(name, ciphertext, &*self.root_seed)?;
-        self.pages.insert(name.to_string(), state);
+        let state = decrypt_page(name, ciphertext, &self.root_seed)?;
+        self.pages.insert(name.to_owned(), state);
         Ok(())
     }
 
@@ -214,7 +209,10 @@ impl Vault {
     /// `pageEncrypt(name)` and writes the resulting blob to IDB themselves.
     #[wasm_bindgen(js_name = pageSet)]
     pub fn page_set(&mut self, name: &str, key: &str, value: &str) {
-        self.pages.entry(name.to_string()).or_default().set(key, value);
+        self.pages
+            .entry(name.to_owned())
+            .or_default()
+            .set(key, value);
     }
 
     /// Delete a key from a page. No-op if the page or key doesn't exist.
@@ -242,8 +240,8 @@ impl Vault {
     /// monotonic counter. Returns the full versioned blob.
     #[wasm_bindgen(js_name = pageEncrypt)]
     pub fn page_encrypt(&mut self, name: &str) -> Result<Vec<u8>, JsError> {
-        let state = self.pages.entry(name.to_string()).or_default();
-        let blob = encrypt_page(name, state, &*self.root_seed)?;
+        let state = self.pages.entry(name.to_owned()).or_default();
+        let blob = encrypt_page(name, state, &self.root_seed)?;
         Ok(blob)
     }
 
@@ -254,7 +252,7 @@ impl Vault {
     /// Returns an opaque handle. The seed is never returned.
     #[wasm_bindgen(js_name = identityOpen)]
     pub fn identity_open(&self, purpose: &str) -> Result<IdentityHandle, JsError> {
-        let id = PurposeIdentity::derive(&*self.root_seed, purpose)?;
+        let id = PurposeIdentity::derive(&self.root_seed, purpose)?;
         Ok(IdentityHandle { inner: id })
     }
 }
@@ -337,6 +335,7 @@ fn derive_meta_key(
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::str_to_string)]
 mod tests {
     use super::*;
 
@@ -367,14 +366,8 @@ mod tests {
     fn ephemeral_each_call_produces_different_identity() {
         let v1 = Vault::ephemeral().unwrap();
         let v2 = Vault::ephemeral().unwrap();
-        let pk1 = v1
-            .identity_open("test-v1")
-            .unwrap()
-            .pubkey();
-        let pk2 = v2
-            .identity_open("test-v1")
-            .unwrap()
-            .pubkey();
+        let pk1 = v1.identity_open("test-v1").unwrap().pubkey();
+        let pk2 = v2.identity_open("test-v1").unwrap().pubkey();
         assert_ne!(pk1, pk2);
     }
 
@@ -434,4 +427,3 @@ mod tests {
         assert_ne!(pk_a_v1, pk_b_v1);
     }
 }
-

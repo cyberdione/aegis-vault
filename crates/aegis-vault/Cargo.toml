@@ -11,6 +11,9 @@ readme                 = "../../README.md"
 categories             = ["cryptography", "wasm", "authentication"]
 keywords               = ["vault", "argon2", "ed25519", "webauthn", "browser"]
 
+[lints]
+workspace = true
+
 [lib]
 crate-type = ["cdylib", "rlib"]
 

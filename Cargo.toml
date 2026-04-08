@@ -10,8 +10,69 @@ license       = "Apache-2.0"
 repository    = "https://github.com/cyberdione/aegis-vault"
 authors       = ["Cyberdione <https://github.com/cyberdione>"]
 
+# ----------------------------------------------------------------------------
+# Clippy lints — mirrors Hyprstream/hyprstream's workspace lints.
+#
+# The aegis-vault crate is a browser-deployed security library, so strict
+# enforcement of correctness and panic-prevention rules is a hard requirement.
+# Cast-safety lints and indexing_slicing are pedantic/restriction groups that
+# are NOT enabled by default, so we skip hyprstream's `allow` entries for them.
+# ----------------------------------------------------------------------------
+[workspace.lints.rust]
+# Keep rust_2018_idioms + unsafe_code aspirational. Aegis-vault forbids unsafe
+# already via `#![deny(unsafe_code)]` in lib.rs; explicit lint not required.
+
+[workspace.lints.clippy]
+# Correctness — uncaught correctness bugs fail the build.
+correctness = { level = "deny", priority = -1 }
+
+# Suspicious / style / complexity / perf — warn.
+suspicious = { level = "warn", priority = -1 }
+style      = { level = "warn", priority = -1 }
+complexity = { level = "warn", priority = -1 }
+perf       = { level = "warn", priority = -1 }
+
+# Panic prevention — use proper error handling.
+unwrap_used = "deny"
+expect_used = "deny"
+disallowed_types = "deny"    # See clippy.toml
+
+# Memory safety.
+mem_forget = "deny"
+
+# Code quality.
+cloned_instead_of_copied = "deny"
+implicit_clone           = "deny"
+match_same_arms          = "deny"
+needless_for_each        = "deny"
+flat_map_option          = "deny"
+async_yields_async       = "deny"
+
+# Shipping quality — don't ship debug code.
+todo           = "deny"
+unimplemented  = "deny"
+print_stdout   = "deny"
+print_stderr   = "deny"
+
+# Specific useful lints.
+dbg_macro                          = "warn"
+empty_structs_with_brackets        = "warn"
+get_unwrap                         = "warn"
+inefficient_to_string              = "warn"
+macro_use_imports                  = "warn"
+map_flatten                        = "warn"
+or_fun_call                        = "warn"
+redundant_closure_for_method_calls = "warn"
+str_to_string                      = "warn"
+trivially_copy_pass_by_ref         = "warn"
+semicolon_if_nothing_returned      = "warn"
+
+# Allow — callback-based APIs and type-parameter-heavy generic code.
+too_many_arguments = "allow"
+type_complexity    = "allow"
+
 [profile.release]
-opt-level = "z"
-lto       = true
-strip     = true
+opt-level     = "z"
+lto           = true
+strip         = true
 codegen-units = 1

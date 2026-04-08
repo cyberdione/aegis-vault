@@ -13,9 +13,9 @@
 
 use crate::crypto::hkdf_expand_32;
 use crate::error::VaultError;
-use ed25519_dalek::{Signer, SigningKey};
 #[cfg(test)]
 use ed25519_dalek::VerifyingKey;
+use ed25519_dalek::{Signer, SigningKey};
 use sha2::{Digest, Sha512};
 use zeroize::{Zeroize, Zeroizing};
 
@@ -56,11 +56,12 @@ impl PurposeIdentity {
         info.extend_from_slice(purpose.as_bytes());
 
         let derived = hkdf_expand_32(root_seed, &info);
-        // ed25519-dalek SigningKey takes a 32-byte seed.
-        let signing_key = SigningKey::from_bytes(&*derived);
+        // ed25519-dalek SigningKey takes a 32-byte seed. Auto-deref turns
+        // &Zeroizing<[u8; 32]> into &[u8; 32].
+        let signing_key = SigningKey::from_bytes(&derived);
         // `derived` (Zeroizing) wipes itself on drop.
         Ok(Self {
-            purpose: purpose.to_string(),
+            purpose: purpose.to_owned(),
             signing_key,
         })
     }
@@ -83,7 +84,6 @@ impl PurposeIdentity {
         let sig = self.signing_key.sign(&prehash);
         sig.to_bytes()
     }
-
 }
 
 impl Drop for PurposeIdentity {
@@ -131,6 +131,7 @@ pub fn verify_purpose(
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::str_to_string)]
 mod tests {
     use super::*;
 

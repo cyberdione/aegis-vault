@@ -5,8 +5,7 @@
 
 use crate::error::VaultError;
 use crate::format::{
-    AEAD_NONCE_LEN, AEAD_TAG_LEN, ARGON2_M_KIB, ARGON2_P, ARGON2_T, ROOT_SEED_CT_LEN,
-    ROOT_SEED_LEN,
+    AEAD_NONCE_LEN, AEAD_TAG_LEN, ARGON2_M_KIB, ARGON2_P, ARGON2_T, ROOT_SEED_CT_LEN, ROOT_SEED_LEN,
 };
 use aes_gcm::{
     aead::{Aead, KeyInit, Payload},
@@ -22,10 +21,7 @@ use zeroize::{Zeroize, Zeroizing};
 ///
 /// Uses parameters from `format::ARGON2_*`. Output is wrapped in
 /// `Zeroizing` so it wipes on drop.
-pub fn argon2id_derive(
-    passphrase: &[u8],
-    salt: &[u8],
-) -> Result<Zeroizing<[u8; 32]>, VaultError> {
+pub fn argon2id_derive(passphrase: &[u8], salt: &[u8]) -> Result<Zeroizing<[u8; 32]>, VaultError> {
     let params = Params::new(ARGON2_M_KIB, ARGON2_T as u32, ARGON2_P as u32, Some(32))
         .map_err(|_| VaultError::Kdf)?;
     let argon = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
@@ -44,16 +40,28 @@ pub fn hkdf_expand_32(ikm: &[u8], info: &[u8]) -> Zeroizing<[u8; 32]> {
     // attacker-controlled non-uniform input here.
     let hkdf = Hkdf::<Sha256>::new(None, ikm);
     let mut out = Zeroizing::new([0u8; 32]);
+    // HKDF-SHA256 can only fail `expand` if the requested output exceeds
+    // 255 * hash_output_size (255 * 32 = 8160 bytes). We request 32 bytes,
+    // so failure is structurally impossible. The explicit expect documents
+    // this invariant; a real error here would indicate memory corruption.
+    #[allow(clippy::expect_used)]
     hkdf.expand(info, out.as_mut_slice())
-        .expect("HKDF expand 32 bytes always succeeds");
+        .expect("HKDF expand 32 bytes cannot fail");
     out
 }
 
 /// HMAC-SHA256(key, data). Used to combine passphrase-derived bytes with
 /// WebAuthn PRF output before HKDF-expanding into the master key.
 pub fn hmac_sha256(key: &[u8], data: &[u8]) -> Zeroizing<[u8; 32]> {
-    let mut mac = <Hmac<Sha256> as Mac>::new_from_slice(key)
-        .expect("HMAC-SHA256 accepts any key length");
+    // `Hmac::new_from_slice` only returns `Err` if the crate is compiled
+    // with a buggy backend that rejects some key lengths. For `Hmac<Sha256>`
+    // using the RustCrypto backend, every key length (including zero) is
+    // accepted — failure is structurally impossible. A real error here
+    // would indicate a dependency swap that broke an invariant the vault
+    // relies on.
+    #[allow(clippy::expect_used)]
+    let mut mac =
+        <Hmac<Sha256> as Mac>::new_from_slice(key).expect("HMAC-SHA256 accepts any key length");
     mac.update(data);
     let tag = mac.finalize().into_bytes();
     let mut out = Zeroizing::new([0u8; 32]);
@@ -110,7 +118,9 @@ pub fn encrypt_root_seed(
 ) -> Result<[u8; ROOT_SEED_CT_LEN], VaultError> {
     let ct = aead_encrypt_with_iv(meta_key, iv, seed, b"aegis-root-seed-v1")?;
     if ct.len() != ROOT_SEED_CT_LEN {
-        return Err(VaultError::Internal("unexpected root seed ciphertext length"));
+        return Err(VaultError::Internal(
+            "unexpected root seed ciphertext length",
+        ));
     }
     let mut out = [0u8; ROOT_SEED_CT_LEN];
     out.copy_from_slice(&ct);
@@ -127,7 +137,9 @@ pub fn decrypt_root_seed(
         // Should be impossible if the AEAD verified, but defend in depth.
         let mut zeroed = pt;
         zeroed.zeroize();
-        return Err(VaultError::Internal("unexpected root seed plaintext length"));
+        return Err(VaultError::Internal(
+            "unexpected root seed plaintext length",
+        ));
     }
     let mut out = Zeroizing::new([0u8; ROOT_SEED_LEN]);
     out.copy_from_slice(&pt);
@@ -143,6 +155,7 @@ pub fn decrypt_root_seed(
 const _AEAD_TAG_LEN_REFERENCED: usize = AEAD_TAG_LEN;
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::str_to_string)]
 mod tests {
     use super::*;
 

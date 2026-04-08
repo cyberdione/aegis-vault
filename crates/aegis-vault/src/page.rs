@@ -33,7 +33,7 @@ impl PageState {
     }
 
     pub fn set(&mut self, key: &str, value: &str) {
-        self.entries.insert(key.to_string(), value.to_string());
+        self.entries.insert(key.to_owned(), value.to_owned());
     }
 
     pub fn delete(&mut self, key: &str) {
@@ -57,8 +57,8 @@ pub fn encrypt_page(
     state: &mut PageState,
     root_seed: &[u8; 32],
 ) -> Result<Vec<u8>, VaultError> {
-    let page_id = PageId::from_name(page_name)
-        .ok_or(VaultError::InvalidArgument("unknown page name"))?;
+    let page_id =
+        PageId::from_name(page_name).ok_or(VaultError::InvalidArgument("unknown page name"))?;
     state.counter = state.counter.saturating_add(1);
 
     // Serialize. We bound length implicitly by IDB blob size; no explicit cap
@@ -73,7 +73,7 @@ pub fn encrypt_page(
     // AAD binds the encryption to (version, page_id, counter) so a tampered
     // header can't successfully decrypt with a tampered counter pasted in.
     let aad = build_page_aad(PAGE_VERSION, page_id, state.counter);
-    let ct = aead_encrypt_with_iv(&*key, &iv, &plaintext, &aad)?;
+    let ct = aead_encrypt_with_iv(&key, &iv, &plaintext, &aad)?;
 
     let header = PageHeader {
         version: PAGE_VERSION,
@@ -91,14 +91,14 @@ pub fn decrypt_page(
     root_seed: &[u8; 32],
 ) -> Result<PageState, VaultError> {
     let (header, ct) = PageHeader::decode(blob)?;
-    let expected_id = PageId::from_name(page_name)
-        .ok_or(VaultError::InvalidArgument("unknown page name"))?;
+    let expected_id =
+        PageId::from_name(page_name).ok_or(VaultError::InvalidArgument("unknown page name"))?;
     if header.page_id != expected_id {
         return Err(VaultError::Format("page id mismatch"));
     }
     let key = derive_page_key(root_seed, page_name);
     let aad = build_page_aad(header.version, header.page_id, header.counter);
-    let plaintext = aead_decrypt(&*key, &header.iv, ct, &aad)?;
+    let plaintext = aead_decrypt(&key, &header.iv, ct, &aad)?;
     let state: PageState = serde_json::from_slice(&plaintext)
         .map_err(|_| VaultError::Format("page json malformed"))?;
     Ok(state)
@@ -114,6 +114,7 @@ fn build_page_aad(version: u8, page_id: PageId, counter: u64) -> Vec<u8> {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::str_to_string)]
 mod tests {
     use super::*;
 
