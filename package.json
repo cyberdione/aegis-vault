@@ -1,6 +1,6 @@
 {
   "name": "@cyberdione/aegis-vault-web",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Encrypted browser identity vault — passphrase + WebAuthn-PRF, AES-256-GCM at rest, HSM-shaped per-purpose Ed25519 signing slots. Vanilla core + Web Component widget + optional framework adapters.",
   "license": "Apache-2.0",
   "repository": {

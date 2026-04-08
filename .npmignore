@@ -1,0 +1,42 @@
+# .npmignore — what to EXCLUDE from the npm package.
+#
+# npm uses .npmignore if present; otherwise falls back to .gitignore.
+# Our .gitignore excludes /pkg/ and /dist/ (because those are build
+# outputs and should never be in git history). But npm DOES need to
+# include them in the published package, since consumers can't run
+# wasm-pack during install — the `prepare` script builds them at
+# install time and npm packs the result.
+#
+# This file overrides .gitignore for npm's purposes, so pkg/ and
+# dist/ ship in the package while still being gitignored.
+
+# Rust build artifacts (huge, not needed by consumers)
+target/
+Cargo.lock
+**/*.rs.bk
+
+# Rust source (consumers get pre-built wasm via prepare script; they
+# don't need the Rust crate source tree at install time)
+crates/
+
+# Repo-level docs not shipped in the npm package
+.github/
+docs/
+tests/
+
+# Node dev artifacts
+node_modules/
+npm-debug.log*
+.npm/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# OS / misc
+*.log
+.env
+.env.local

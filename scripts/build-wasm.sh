@@ -29,5 +29,13 @@ RUSTFLAGS="-C target-feature=+simd128" \
     --target web \
     --out-dir "../../$OUT_DIR"
 
+# wasm-pack generates pkg/.gitignore with `*` which excludes the entire
+# pkg/ directory from git — that's fine for git, but `npm pack` also
+# honors nested .gitignore files and would drop the whole directory from
+# the published tarball. Remove it so the npm pack picks up the contents.
+# (The top-level .gitignore still excludes /pkg/ from git, and our
+# top-level .npmignore tells npm pack to override .gitignore.)
+rm -f "$OUT_DIR/.gitignore"
+
 echo "Done. Wasm size:"
 du -h "$OUT_DIR/aegis_vault_bg.wasm"
