@@ -42,11 +42,24 @@ When enrolled, the vault requires *both* the passphrase *and* the hardware authe
 ### Post-unlock in-process JavaScript
 **This is the most important caveat.** Once the user has unlocked the vault, an attacker who achieves JavaScript execution in the same origin can:
 
-1. Call `vault.identityOpen('hyprstream-rpc-envelope-v1').sign(arbitrary_bytes)` and obtain a valid signature for whatever bytes they choose. Domain separation prevents *cross*-purpose forgery, but the attacker can still forge for the same purpose.
-2. Read pages via `vault.pageEntries('auth')` and recover refresh tokens.
-3. Hold references to `IdentityHandle` objects across vault.lock() calls.
+1. Call `await vault.identityOpen('hyprstream-rpc-envelope-v1').then(h => h.sign(arbitrary_bytes))` and obtain a valid signature for whatever bytes they choose. Domain separation prevents *cross*-purpose forgery, but the attacker can still forge for the same purpose.
+2. Read pages via `await vault.pageEntries('auth')` and recover refresh tokens.
+3. Hold references to `IdentityHandleClient` objects across `vault.lock()` calls.
+4. **Bypass the Web Component widget entirely.** Shadow DOM is encapsulation, not isolation (see next section).
 
-The vault is **not** a hardware security module and cannot stop in-process attackers. Phase B (Wanix worker isolation) closes this path by moving the vault into a separate process that the main thread cannot reach. v0.1 is a substantial improvement over the localStorage status quo but does not claim to defend against compromised same-origin JavaScript.
+The vault is **not** a hardware security module and cannot stop in-process attackers. **Phase D (cross-origin iframe deployment)** is the architecture that closes this path structurally: when the vault is served from a separate origin (e.g. `vault.cyberdione.io`) and embedded as an iframe, the same-origin policy enforces a real JavaScript isolation boundary. Phase B (Wanix worker isolation) complements that by closing in-origin leakage as well. Both are future work. v0.2 is a substantial improvement over the localStorage status quo but does not claim to defend against compromised same-origin JavaScript when deployed in-process.
+
+### Widget shadow DOM is NOT a security boundary
+The `<aegis-vault-modal>` Web Component uses an open shadow root for style encapsulation, event scoping, and framework agnosticism. **Closed shadow DOM is also not a security boundary** and we deliberately use open mode because closed adds no real security and breaks accessibility tooling.
+
+Same-origin JavaScript trivially bypasses shadow DOM in several routine ways:
+
+- Override `Element.prototype.attachShadow` before the widget loads; capture every shadow root the widget creates.
+- Override `EventTarget.prototype.addEventListener` to wrap and log every keystroke handler.
+- Listen on `document` with `{ capture: true }` for keyboard events that propagate through the shadow boundary during the capture phase.
+- Patch `crypto.subtle`, `IndexedDB.open`, or any global the widget calls into.
+
+**Treat the widget as a convenience and trust upgrade, not an isolation primitive.** Its real benefits are: style isolation from the host page's CSS, a framework-agnostic drop-in component, and a single trusted reference UI that consumers don't have to re-implement. If you need isolation against same-origin JavaScript, use the cross-origin iframe deployment (Phase D).
 
 ### Memory dumping the WebAssembly linear memory
 The seed is held in `Zeroizing<[u8; 32]>` inside the wasm module's linear memory. Anything with `wasm.memory.buffer.subarray(...)` access can read it raw. In the in-process binding, the wasm memory buffer is accessible from any same-origin JS — see the previous point. Phase B's process boundary is the structural fix.
@@ -70,11 +83,43 @@ None. Lost passphrase = lost vault. Documented in the README; consumers should w
 v0.1 supports one vault per origin. Multi-vault is a v2 feature.
 
 ### Per-operation user presence (WebAuthn touch on every signature)
-WebAuthn PRF is used at *unlock* time only. Each individual `sign()` call does not require a fresh authenticator touch. v0.2 may add per-slot policies that gate operations on a fresh assertion.
+WebAuthn PRF is used at *unlock* time only. Each individual `sign()` call does not require a fresh authenticator touch. A future release may add per-slot policies that gate operations on a fresh assertion.
+
+## Deployment options and the threat model upgrade path
+
+v0.2 ships the in-process wasm-bindgen backend. Two future deployment options give stronger properties without changing the consumer-facing API:
+
+### Phase D — Cross-origin iframe
+Serve the aegis-vault wasm + unlock widget at a separate origin (e.g. `vault.cyberdione.io`) and embed it in the host page as an `<iframe>`. The parent page cannot:
+- Read keystrokes typed into the vault's passphrase input
+- Inspect the DOM of the iframe
+- Run JavaScript in the iframe's realm
+- Override prototypes or intercept `crypto.subtle` calls inside the iframe
+- Access the vault's IndexedDB partition (it's partitioned per origin)
+
+Communication happens over `postMessage`, so every `handle.sign(bytes)` call is an RPC round-trip. The host page sees only `{ signature }` results, never key material. **This is the same architecture Stripe Elements, Plaid Link, Google Sign-In, and PayPal credential prompts use for exactly this reason.**
+
+Phase D requires a deployment change (a new origin) but no API change. Consumer code written against `VaultClient` today will work unchanged — only the import line changes from `@cyberdione/aegis-vault-web` to `@cyberdione/aegis-vault-web/iframe-host`.
+
+### Phase B — Wanix worker isolation
+Run the vault Rust core as a WASI binary inside a Wanix worker process. Even within a single origin, the main thread and the vault have separate WebAssembly linear memories. `Phase B + Phase D` combined is the strongest deployment: a cross-origin iframe containing a Wanix worker, isolated at both boundaries.
+
+### What each phase closes
+
+| Attack class                                | v0.2 (in-process) | Phase D (iframe) | Phase B (wanix) | B + D |
+|---|---|---|---|---|
+| Disk capture at rest                        | ✅ protected        | ✅                | ✅              | ✅     |
+| localStorage scraping                       | ✅ protected        | ✅                | ✅              | ✅     |
+| Cross-protocol forgery                      | ✅ protected        | ✅                | ✅              | ✅     |
+| Post-unlock JS in host page                 | ❌ not protected    | ✅ protected       | partial         | ✅     |
+| Post-unlock JS in vault origin              | ❌ not protected    | ❌ not protected   | ✅ protected    | ✅     |
+| WebAssembly memory dump by same-origin JS   | ❌ not protected    | ✅ protected       | ✅ protected    | ✅     |
+
+The jump from v0.2 to Phase D is the most valuable single upgrade because it closes the entire "post-unlock JS in host page" class. Phase D is a deployment-configuration change with zero Rust changes and zero consumer API changes; Phase B requires Wanix runtime integration and is the harder prerequisite.
 
 ## Cryptographic parameters
 
-For audit and external review, here are the locked v0.1 parameters:
+For audit and external review, here are the locked v0.2 parameters:
 
 | Primitive | Algorithm | Parameters |
 |---|---|---|

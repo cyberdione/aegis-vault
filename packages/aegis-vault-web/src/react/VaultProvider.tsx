@@ -1,13 +1,18 @@
 /**
- * Headless vault provider + hook.
+ * Headless React adapter.
  *
- * Wraps the singleton `vault` instance in a React context, exposes its
- * state via `useVaultState()`, and provides action wrappers (`create`,
- * `unlock`, `startEphemeral`, `lock`, `delete`) via `useVault()`.
+ * Thin React binding (~80 LOC) over the vanilla `VaultClient` interface.
+ * Exposes the vault's state via a context provider + hooks; renders no UI.
  *
- * No UI is rendered here — children render unconditionally. Consumers
- * decide how to gate their app on `state.locked`. See `VaultModal.tsx`
- * for a reference implementation.
+ * Consumers decide how to present the locked state — typically either by
+ * using `<aegis-vault-modal />` from the vanilla widget subpackage, or by
+ * building their own modal with `useVault()`.
+ *
+ * This adapter is one of several the library may ship. React is not
+ * privileged in aegis-vault's architecture — the vanilla core is the
+ * canonical entry point, and this file is a ~80 LOC convenience for React
+ * consumers. Future Vue / Svelte / Solid adapters would live alongside
+ * this one and consume the same `VaultClient` interface.
  */
 
 import {
@@ -18,7 +23,8 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { vault, type AegisVault, type VaultState } from '../index.js';
+import { vault } from '../index.js';
+import type { VaultClient, VaultState } from '../types.js';
 
 export interface VaultActions {
   create: (passphrase: string, prfOutput?: Uint8Array) => Promise<void>;
@@ -32,7 +38,7 @@ export interface VaultActions {
 export interface VaultContextValue {
   state: VaultState;
   actions: VaultActions;
-  vault: AegisVault;
+  vault: VaultClient;
 }
 
 const VaultContext = createContext<VaultContextValue | null>(null);
@@ -40,10 +46,16 @@ const VaultContext = createContext<VaultContextValue | null>(null);
 interface VaultProviderProps {
   children: ReactNode;
   /**
-   * Inject a custom vault instance. Defaults to the singleton exported
-   * from `@cyberdione/aegis-vault-web`. Tests can pass a fresh instance.
+   * Inject a custom `VaultClient` instance. Defaults to the singleton
+   * exported from `@cyberdione/aegis-vault-web`. Tests and multi-vault
+   * apps can pass their own instance.
+   *
+   * In Phase D (cross-origin iframe deployment), consumers pass an
+   * `IframeHostVaultClient` instead of the default in-process singleton;
+   * this provider and the `useVault()` hook both accept either one
+   * without code changes.
    */
-  instance?: AegisVault;
+  instance?: VaultClient;
 }
 
 export function VaultProvider({ children, instance = vault }: VaultProviderProps) {
@@ -75,6 +87,11 @@ export function VaultProvider({ children, instance = vault }: VaultProviderProps
 
 /**
  * Access the full vault context. Throws if called outside `<VaultProvider>`.
+ *
+ * All cross-boundary methods on `vault` are async — consumers must `await`
+ * `pageGet`, `pageEntries`, `identityOpen`, `sign`, etc. This is the
+ * forward-compatibility contract that keeps the React code valid when the
+ * cross-origin iframe transport lands in Phase D.
  */
 export function useVault(): VaultContextValue {
   const ctx = useContext(VaultContext);

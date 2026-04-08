@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Aegis Vault — vanilla quick-start</title>
+<!--
+  Vanilla HTML + JS quick-start using the <aegis-vault-modal> Web Component.
+
+  This is the canonical example. No React, no framework, no build step
+  beyond wasm-pack. Drop the script, drop the element, listen for events.
+
+  Replace the CDN URL below with your preferred module source. During
+  local development, serve this file from the repo root with
+  `python3 -m http.server` and import from the built dist/ directory.
+-->
+<script type="module">
+  // Side-effect import: registers the <aegis-vault-modal> custom element.
+  import '../../packages/aegis-vault-web/dist/widget/index.js';
+
+  // Core API, for reading/writing pages and opening identities.
+  import { vault } from '../../packages/aegis-vault-web/dist/index.js';
+
+  // Listen for lifecycle events on the modal element.
+  const modal = document.querySelector('aegis-vault-modal');
+
+  modal.addEventListener('aegis-vault-unlocked', async (ev) => {
+    console.log('[aegis-vault] unlocked', ev.detail);
+    document.getElementById('status').textContent =
+      ev.detail.persistent
+        ? 'Unlocked (persistent vault)'
+        : 'Unlocked (ephemeral session — will not survive reload)';
+
+    // Open an identity for a stable purpose. The pubkey is deterministic
+    // across reloads for a persistent vault; ephemeral vaults generate a
+    // fresh pubkey per session.
+    const id = await vault.identityOpen('example-app-v1');
+    const pk = id.pubkey;
+    document.getElementById('pubkey').textContent =
+      Array.from(pk, (b) => b.toString(16).padStart(2, '0')).join('');
+
+    // Sign some canonical bytes. Async — one microtask in-process,
+    // one postMessage RTT in the Phase D iframe transport.
+    const msg = new TextEncoder().encode('hello world');
+    const sig = await id.sign(msg);
+    document.getElementById('signature').textContent =
+      Array.from(sig, (b) => b.toString(16).padStart(2, '0')).join('');
+
+    await id.close();
+  });
+
+  modal.addEventListener('aegis-vault-locked', () => {
+    document.getElementById('status').textContent = 'Locked';
+  });
+
+  modal.addEventListener('aegis-vault-failed', (ev) => {
+    console.warn('[aegis-vault] failed', ev.detail);
+  });
+
+  // Optional: a "lock" button to demonstrate programmatic locking.
+  document.getElementById('lock-btn').addEventListener('click', () => {
+    vault.lock();
+  });
+
+  // Optional: page get/set. Async per the forward-compat contract.
+  document.getElementById('save-pref').addEventListener('click', async () => {
+    if (vault.locked) return;
+    await vault.pageSet('prefs', 'theme', 'dark');
+    const all = await vault.pageEntries('prefs');
+    console.log('[aegis-vault] prefs:', all);
+  });
+</script>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 640px; margin: 2em auto; padding: 0 1em; }
+  code { word-break: break-all; font-size: 12px; background: #f4f4f4; padding: 2px 4px; }
+  button { padding: 8px 16px; margin-right: 8px; }
+</style>
+</head>
+<body>
+<h1>Aegis Vault — vanilla quick-start</h1>
+<p>This page loads <code>&lt;aegis-vault-modal&gt;</code> and reacts to its custom events.</p>
+
+<aegis-vault-modal></aegis-vault-modal>
+
+<h2>Status</h2>
+<p>State: <span id="status">(initializing)</span></p>
+
+<h2>Identity (after unlock)</h2>
+<p>Purpose: <code>example-app-v1</code></p>
+<p>Pubkey: <code id="pubkey">—</code></p>
+<p>Signature of "hello world": <code id="signature">—</code></p>
+
+<h2>Actions</h2>
+<button id="lock-btn">Lock vault</button>
+<button id="save-pref">Save a pref</button>
+
+<hr>
+<p><small>This example loads the built <code>dist/</code> output from the sibling package.
+From the aegis-vault repo root, run
+<code>cd packages/aegis-vault-web &amp;&amp; npm run build</code>
+then <code>python3 -m http.server</code> and navigate to <code>docs/examples/vanilla.html</code>.</small></p>
+</body>
+</html>

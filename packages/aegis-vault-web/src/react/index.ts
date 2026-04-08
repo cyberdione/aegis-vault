@@ -1,18 +1,18 @@
 /**
- * React bindings for @cyberdione/aegis-vault-web.
+ * React adapter for @cyberdione/aegis-vault-web.
  *
- * This module exports a headless `VaultProvider` and `useVault()` hook so
- * consumers can wire the vault into their app's provider tree without
- * pulling in any UI library. For a reference UI implementation see
- * `VaultModal`, which is a minimal unstyled modal — consumers are expected
- * to either use it as a starting point or build their own UI on top of the
- * `useVault()` hook.
+ * Headless only: ships a `VaultProvider` context and `useVault()` /
+ * `useVaultState()` hooks. **No UI components.** React consumers build
+ * their own modal using the hooks, or use `<aegis-vault-modal>` from
+ * `@cyberdione/aegis-vault-web/widget` (which works inside JSX because
+ * React understands custom elements as lowercase tags).
  *
- * Chakra-, Tailwind-, or shadcn-styled modals are out of scope for this
- * package. Cyberdione builds its Chakra modal in `src/vault/VaultModal.tsx`
- * using the hooks below.
+ * React is not privileged in aegis-vault's architecture — the vanilla
+ * core at `@cyberdione/aegis-vault-web` is the canonical entry point,
+ * and this package is a thin (~80 LOC) convenience adapter for React
+ * consumers. Future Vue / Svelte / Solid adapters would be peers of
+ * this one, all built on the same vanilla `VaultClient` interface.
  */
 
 export { VaultProvider, useVault, useVaultState } from './VaultProvider.js';
-export { VaultModal } from './VaultModal.js';
 export type { VaultActions, VaultContextValue } from './VaultProvider.js';

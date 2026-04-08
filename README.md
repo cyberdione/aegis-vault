@@ -4,7 +4,9 @@
 
 A browser-side secret store designed to replace plaintext `localStorage` for OAuth refresh tokens, host configurations, and identity material — and to replace per-session random keypairs with a stable browser identity that persists across reloads. The Ed25519 signing seed lives in WebAssembly linear memory and is **never returned to JavaScript** as raw bytes; consumers obtain opaque `IdentityHandle`s and ask the vault to sign on their behalf.
 
-**Status:** v0.1, API not stable until 1.0.
+The library is a **vanilla TypeScript / ECMAScript library**. It ships with an optional vanilla Web Component widget (`<aegis-vault-modal>`) for the default UI, and an optional thin React adapter for React consumers. Neither is required — you can always drop down to the headless core API and build your own UI.
+
+**Status:** v0.2, API not stable until 1.0.
 
 ## Why
 
@@ -41,10 +43,37 @@ npm link @cyberdione/aegis-vault-web
 # "@cyberdione/aegis-vault-web": "github:cyberdione/aegis-vault#main"
 ```
 
-## Quick start
+## Quick start — vanilla widget (easiest)
+
+Drop the element into your HTML and listen for its events. Works in plain HTML, React, Vue, Svelte, Solid, or anything else.
+
+```html
+<script type="module">
+  // Side-effect import: registers <aegis-vault-modal>
+  import '@cyberdione/aegis-vault-web/widget';
+  import { vault } from '@cyberdione/aegis-vault-web';
+
+  const modal = document.querySelector('aegis-vault-modal');
+  modal.addEventListener('aegis-vault-unlocked', async (ev) => {
+    // ev.detail: { persistent: boolean }
+    const id = await vault.identityOpen('my-app-v1');
+    console.log('signer pubkey:', id.pubkey);
+    const sig = await id.sign(new TextEncoder().encode('hello'));
+    await id.close();
+  });
+</script>
+
+<aegis-vault-modal></aegis-vault-modal>
+```
+
+See [`docs/examples/vanilla.html`](docs/examples/vanilla.html) for a complete runnable example.
+
+## Quick start — vanilla headless (build your own UI)
+
+For full control over the modal UX, skip the widget and talk to the core API directly:
 
 ```ts
-import { vault, type IdentityHandle } from '@cyberdione/aegis-vault-web';
+import { vault } from '@cyberdione/aegis-vault-web';
 
 // 1. Check if a vault exists; if not, create one.
 if (!(await vault.exists())) {
@@ -54,21 +83,70 @@ if (!(await vault.exists())) {
 }
 
 // 2. Open an identity for a stable purpose.
-const id: IdentityHandle = vault.identityOpen('hyprstream-rpc-envelope-v1');
+const id = await vault.identityOpen('hyprstream-rpc-envelope-v1');
 
 // 3. The pubkey is stable across reloads for this passphrase + purpose.
-const pubkey: Uint8Array = id.pubkey();
+const pubkey: Uint8Array = id.pubkey;  // cached, synchronous access
 
 // 4. Sign canonical bytes. Domain separation is enforced inside the vault.
 const canonical = new Uint8Array([1, 2, 3, 4]);
-const signature: Uint8Array = id.sign(canonical);
+const signature: Uint8Array = await id.sign(canonical);
 
 // 5. Persist OAuth tokens encrypted at rest.
 await vault.pageSet('auth', 'refresh_token_host_a', '...');
 await vault.pageSet('auth', 'client_id_host_a', '...');
 
 // 6. On reload + unlock, the same purpose returns the same key.
+await id.close();
 ```
+
+See [`docs/examples/vanilla-headless.html`](docs/examples/vanilla-headless.html) for a complete runnable example that builds its own modal.
+
+## Quick start — React
+
+React consumers can either use the widget directly inside JSX (React treats lowercase tags as custom elements):
+
+```tsx
+import '@cyberdione/aegis-vault-web/widget';
+import { vault } from '@cyberdione/aegis-vault-web';
+
+function App() {
+  return (
+    <>
+      <aegis-vault-modal />
+      <YourApp />
+    </>
+  );
+}
+```
+
+Or build a custom modal with the headless `useVault()` hook:
+
+```tsx
+import { VaultProvider, useVault } from '@cyberdione/aegis-vault-web/react';
+
+function App() {
+  return (
+    <VaultProvider>
+      <VaultGate><AuthedApp /></VaultGate>
+    </VaultProvider>
+  );
+}
+
+function VaultGate({ children }) {
+  const { state, actions } = useVault();
+  if (state.locked) return <YourCustomModal onUnlock={actions.unlock} />;
+  return children;
+}
+```
+
+See [`docs/examples/react-with-widget.tsx`](docs/examples/react-with-widget.tsx) and [`docs/examples/react-custom.tsx`](docs/examples/react-custom.tsx) for complete examples.
+
+## Async API contract
+
+**All cross-boundary vault methods are `async`**, even though the current in-process backend resolves synchronously underneath. This is a forward-compatibility contract: a future cross-origin iframe deployment ([Phase D](#phases)) will use the same interface but round-trip each call through `postMessage`. Keeping consumer code async-shaped from day one means the transport swap is invisible.
+
+In practice: `pageGet`, `pageEntries`, `identityOpen`, `IdentityHandle.sign`, and `IdentityHandle.close` all return `Promise`s. The exceptions are `IdentityHandle.pubkey` (cached at open time, synchronous field access) and `lock()` (fire-and-forget local zeroize).
 
 ## Persistence model: two booleans, no enum
 
@@ -101,21 +179,22 @@ Hyprstream (one of this vault's intended consumers) has a server-side `Subject` 
 - A vault with `persistent: false` can still authenticate to hyprstream as `Subject: jane@example.com` (the user is OAuth-logged-in, the JWT is sent, the server logs `jane`).
 - A fully persistent vault with no JWT loaded appears as `Subject: anonymous` to hyprstream.
 
-To prevent the two concepts from blurring in code review and incident response, **aegis-vault never uses the word `anonymous`** in any identifier, type name, comment, log line, or UI string. The Rust constructor for an in-memory vault is `Vault::ephemeral()`. The TS API method is `vault.startEphemeral()`. The reference modal button copy is "Continue without saving." If you see `anonymous` in an aegis-vault PR, please reject it on naming grounds.
+To prevent the two concepts from blurring in code review and incident response, **aegis-vault never uses the word `anonymous`** in any identifier, type name, comment, log line, or UI string. The Rust constructor for an in-memory vault is `Vault::ephemeral()`. The TS API method is `vault.startEphemeral()`. The widget button copy is "Continue without saving." If you see `anonymous` in an aegis-vault PR, please reject it on naming grounds.
 
 ## HSM-style identity slots
 
 The vault is shaped like a hardware security module: keys live inside the vault, operations on those keys go through the vault, and key material is not exported.
 
 ```ts
-const id = vault.identityOpen('hyprstream-rpc-envelope-v1');
-//                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-//                              "purpose" — a stable string identifier.
-//                              Each unique purpose derives an independent
-//                              Ed25519 keypair via HKDF from the root seed.
+const id = await vault.identityOpen('hyprstream-rpc-envelope-v1');
+//                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+//                                    "purpose" — a stable string identifier.
+//                                    Each unique purpose derives an independent
+//                                    Ed25519 keypair via HKDF from the root seed.
 
-id.pubkey();   // 32 bytes — stable across reloads for the same passphrase
-id.sign(...);  // 64 bytes — Ed25519 signature, domain-separated by purpose
+id.pubkey;            // 32 bytes — cached at open, synchronous field access
+await id.sign(bytes); // 64 bytes — Ed25519 signature, domain-separated by purpose
+await id.close();
 ```
 
 ### Per-purpose key derivation
@@ -174,13 +253,15 @@ await vault.pageSet('auth', 'refresh_token', 'abc...');
 await vault.pageSet('auth', 'client_id', 'xyz...');
 await vault.pageSet('hosts', 'host:host_42', JSON.stringify({...}));
 
-const token = vault.pageGet('auth', 'refresh_token');
-const allAuth = vault.pageEntries('auth');
+const token = await vault.pageGet('auth', 'refresh_token');
+const allAuth = await vault.pageEntries('auth');
 ```
+
+All page operations are async. See "Async API contract" above for why.
 
 ### Well-known page names
 
-The crate validates against a fixed list of page names so the on-disk `page_id` byte stays stable across consumers. v0.1 supports:
+The crate validates against a fixed list of page names so the on-disk `page_id` byte stays stable across consumers. v0.2 supports:
 
 | Page | Intended use |
 |---|---|
@@ -191,55 +272,46 @@ The crate validates against a fixed list of page names so the on-disk `page_id` 
 
 Adding a new well-known page requires bumping the crate version and adding a `PageId` variant. Future versions may relax this if free-form page names prove safe.
 
-## React integration
-
-```tsx
-import { VaultProvider, useVault, VaultModal } from '@cyberdione/aegis-vault-web/react';
-
-function App() {
-  return (
-    <VaultProvider>
-      <VaultModal />              {/* shown automatically when locked */}
-      <YourApp />
-    </VaultProvider>
-  );
-}
-
-function YourApp() {
-  const { state, actions } = useVault();
-  if (state.locked) return null;  // VaultModal handles this case
-  // ...
-}
-```
-
-The `VaultModal` is a minimal, unstyled reference implementation. Real apps should build their own modal using `useVault()` and pair it with their UI library (Chakra, shadcn, Tailwind, etc).
-
 ## Architecture
 
 ```
-┌────────────────────────────────────────┐
-│  Your app (React, vanilla JS, Vue…)    │
-└──────────────┬─────────────────────────┘
-               │  TypeScript
-┌──────────────▼─────────────────────────┐
-│  @cyberdione/aegis-vault-web           │
-│  - AegisVault (locked / persistent)    │
-│  - IndexedDB I/O                       │
-│  - BroadcastChannel tab sync           │
-│  - VaultProvider, useVault             │
-└──────────────┬─────────────────────────┘
+┌─────────────────────────────────────────────┐
+│  Your app (vanilla, React, Vue, Svelte, …)  │
+└──────────────┬──────────────────────────────┘
+               │  one of three paths
+   ┌───────────┼────────────────────────┐
+   │           │                        │
+   ▼           ▼                        ▼
+┌────────┐ ┌──────────────────┐  ┌─────────────┐
+│ widget │ │ headless TS API  │  │ react hooks │
+│ (vanilla │ │ (vanilla)        │  │ (~80 LOC    │
+│  Web     │ │ vault singleton  │  │  adapter)   │
+│  Comp)   │ │ VaultClient iface│  │             │
+└────┬───┘ └────────┬─────────┘  └─────┬───────┘
+     └──────────────┴──────────────────┘
+                    │
+                    ▼
+┌─────────────────────────────────────────────┐
+│  @cyberdione/aegis-vault-web (vanilla core) │
+│  - AegisVault (locked / persistent)         │
+│  - IndexedDB I/O                            │
+│  - BroadcastChannel tab sync                │
+│  - Async VaultClient contract               │
+└──────────────┬──────────────────────────────┘
                │  wasm-bindgen
-┌──────────────▼─────────────────────────┐
-│  aegis-vault (Rust crate)              │
-│  - Argon2id, HKDF, AES-GCM, HMAC       │
-│  - Ed25519 per-purpose derivation      │
-│  - Page encrypt/decrypt                │
-│  - Versioned blob format               │
-│  - Zeroizing<...> for all secrets      │
-└────────────────────────────────────────┘
+┌──────────────▼──────────────────────────────┐
+│  aegis-vault (Rust crate)                   │
+│  - Argon2id, HKDF, AES-GCM, HMAC            │
+│  - Ed25519 per-purpose derivation           │
+│  - Page encrypt/decrypt                     │
+│  - Versioned blob format                    │
+│  - Zeroizing<...> for all secrets           │
+└─────────────────────────────────────────────┘
 ```
 
-The Rust crate is the only place that handles secrets. The TS shim shuttles opaque ciphertext blobs between IDB and the wasm module, but never sees plaintext seeds, page contents, or signatures-in-progress.
+The Rust crate is the only place that handles secrets. The TS core shuttles opaque ciphertext blobs between IDB and the wasm module but never sees plaintext seeds, page contents, or signatures-in-progress. The three consumption paths (widget, headless, React hooks) are thin layers over the vanilla core — you can mix and match, and switching between them is a one-import change.
+
+React is not privileged in the architecture. Future Vue / Svelte / Solid adapters would be peers of the React adapter, all built on the same vanilla `VaultClient` interface.
 
 ## Build from source
 
@@ -266,11 +338,22 @@ cd crates/aegis-vault
 cargo test
 ```
 
-## Phase B (future)
+## Phases
 
-This package is the in-process wasm-bindgen variant. A future Phase B will compile the same Rust core to a WASI binary that runs as an isolated [Wanix](https://github.com/cyberdione/wanix) process, communicating with consumer code via DMA ring buffer IPC. In that mode, the seed lives in a separate WebAssembly linear memory that the main thread cannot read at all, closing the only remaining seed-exposure path. The same TypeScript API is preserved — only the transport changes.
+This repo delivers aegis-vault in phases. v0.2 is the current release.
 
-Phase B is not part of v0.1 and will land as a separate release once Wanix integration prerequisites are in place.
+### Shipped
+
+- **v0.1** — Rust crate + TS shim + React hooks, in-process backend only. Bootstrapped the project.
+- **v0.2** (current) — Vanilla `<aegis-vault-modal>` Web Component widget. Async API contract (`pageGet`, `identityOpen`, `IdentityHandle.sign` all `Promise`-returning). Transport-agnostic `VaultClient` interface. React modal reference implementation moved from library code into `docs/examples/` so the React subpath is purely headless hooks.
+
+### Future
+
+- **Phase B — Wanix worker isolation.** Compile the same Rust core to a WASI binary that runs as an isolated [Wanix](https://github.com/cyberdione/wanix) process, communicating with consumer code via DMA ring buffer IPC. The seed lives in a separate WebAssembly linear memory that the main thread cannot read at all. Same `VaultClient` interface; only the transport changes.
+
+- **Phase D — Cross-origin iframe deployment.** Serve the vault as a static iframe-guest app at a separate origin (e.g. `vault.cyberdione.io`). Parent pages embed it with `<iframe>` and talk over `postMessage`; the same-origin policy provides a real isolation boundary against post-unlock JavaScript in the host page. Same `VaultClient` interface — a new `/iframe-host` subpath implements it by routing calls through `postMessage`. Phase B and Phase D compose: the iframe-guest can internally run the vault in a Wanix worker for maximum strength.
+
+Neither is part of v0.2. Both are tracked in the aegis-vault roadmap and will land as separate releases. Phase D is expected to land before Phase B because it's an independently valuable deployment option and does not depend on Wanix bring-up.
 
 ## License
 

@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Aegis Vault — vanilla headless (build your own modal)</title>
+<!--
+  Vanilla headless example. No <aegis-vault-modal>, no widget bundle.
+  The page builds its own modal UI using plain DOM and calls into the
+  vault's core API directly.
+
+  Use this pattern when:
+  - Your app has a design system you want to apply
+  - You need custom copy / branding that the widget doesn't expose
+  - You're targeting a framework that has no aegis-vault adapter yet
+-->
+<script type="module">
+  import { vault } from '../../packages/aegis-vault-web/dist/index.js';
+
+  const statusEl = document.getElementById('status');
+  const modalEl = document.getElementById('modal');
+  const formEl = document.getElementById('form');
+  const passphraseEl = document.getElementById('passphrase');
+  const confirmEl = document.getElementById('confirm');
+  const confirmRow = document.getElementById('confirm-row');
+  const errorEl = document.getElementById('error');
+  const submitBtn = document.getElementById('submit');
+  const ephemeralBtn = document.getElementById('ephemeral');
+  const lockBtn = document.getElementById('lock');
+
+  let vaultExists = false;
+
+  // Subscribe to vault state. Fires immediately on subscribe and on every change.
+  vault.subscribe((state) => {
+    if (state.locked) {
+      statusEl.textContent = 'Locked';
+      modalEl.style.display = '';
+      lockBtn.style.display = 'none';
+    } else {
+      statusEl.textContent = state.persistent
+        ? 'Unlocked — persistent vault'
+        : 'Unlocked — ephemeral session';
+      modalEl.style.display = 'none';
+      lockBtn.style.display = '';
+      errorEl.textContent = '';
+    }
+  });
+
+  // Initial view decision: create vs unlock.
+  async function refresh() {
+    vaultExists = await vault.exists();
+    submitBtn.textContent = vaultExists ? 'Unlock' : 'Create vault';
+    confirmRow.style.display = vaultExists ? 'none' : '';
+  }
+  refresh();
+
+  formEl.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    errorEl.textContent = '';
+    submitBtn.disabled = true;
+    try {
+      if (vaultExists) {
+        await vault.unlock(passphraseEl.value);
+      } else {
+        if (passphraseEl.value !== confirmEl.value) {
+          errorEl.textContent = 'Passphrases do not match';
+          return;
+        }
+        if (passphraseEl.value.length < 8) {
+          errorEl.textContent = 'Passphrase must be at least 8 characters';
+          return;
+        }
+        await vault.create(passphraseEl.value);
+      }
+      passphraseEl.value = '';
+      confirmEl.value = '';
+    } catch (err) {
+      errorEl.textContent = err.message ?? String(err);
+    } finally {
+      submitBtn.disabled = false;
+    }
+  });
+
+  ephemeralBtn.addEventListener('click', async () => {
+    submitBtn.disabled = true;
+    try {
+      await vault.startEphemeral();
+    } catch (err) {
+      errorEl.textContent = err.message ?? String(err);
+    } finally {
+      submitBtn.disabled = false;
+    }
+  });
+
+  lockBtn.addEventListener('click', () => {
+    vault.lock();
+    refresh();
+  });
+</script>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 640px; margin: 2em auto; padding: 0 1em; }
+  #modal { background: #f6f6f6; padding: 1.5em; border-radius: 8px; margin-top: 1em; }
+  .row { margin: 0.5em 0; }
+  input[type="password"] { padding: 6px 10px; width: 250px; font-size: 14px; }
+  button { padding: 8px 16px; margin-right: 8px; cursor: pointer; }
+  .error { color: #900; font-size: 13px; min-height: 1em; }
+</style>
+</head>
+<body>
+<h1>Aegis Vault — headless example (build your own modal)</h1>
+<p>State: <strong id="status">—</strong></p>
+
+<div id="modal">
+  <h2>Unlock or create</h2>
+  <form id="form">
+    <div class="row">
+      <input type="password" id="passphrase" placeholder="Passphrase" autocomplete="current-password">
+    </div>
+    <div class="row" id="confirm-row">
+      <input type="password" id="confirm" placeholder="Confirm passphrase" autocomplete="new-password">
+    </div>
+    <div class="row error" id="error"></div>
+    <div class="row">
+      <button type="submit" id="submit">—</button>
+      <button type="button" id="ephemeral">Continue without saving</button>
+    </div>
+  </form>
+</div>
+
+<button id="lock" style="display:none">Lock vault</button>
+</body>
+</html>

@@ -1,7 +1,7 @@
 {
   "name": "@cyberdione/aegis-vault-web",
-  "version": "0.1.0",
-  "description": "Encrypted browser identity vault — passphrase + WebAuthn-PRF, AES-256-GCM at rest, HSM-shaped per-purpose Ed25519 signing slots. Web bindings + React provider.",
+  "version": "0.2.0",
+  "description": "Encrypted browser identity vault — passphrase + WebAuthn-PRF, AES-256-GCM at rest, HSM-shaped per-purpose Ed25519 signing slots. Vanilla core + Web Component widget + optional framework adapters.",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
@@ -16,6 +16,18 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./types": {
+      "types": "./dist/types.d.ts",
+      "import": "./dist/types.js"
+    },
+    "./widget": {
+      "types": "./dist/widget/index.d.ts",
+      "import": "./dist/widget/index.js"
+    },
+    "./webauthn": {
+      "types": "./dist/webauthn.d.ts",
+      "import": "./dist/webauthn.js"
     },
     "./react": {
       "types": "./dist/react/index.d.ts",
