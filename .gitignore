@@ -3,11 +3,11 @@ target/
 **/*.rs.bk
 Cargo.lock
 
-# Wasm-pack output (rebuilt by every consumer; never committed)
-packages/aegis-vault-web/pkg/
+# Wasm-pack output (rebuilt by every consumer via `prepare` hook; never committed)
+/pkg/
 
 # TypeScript build output (rebuilt; never committed)
-packages/aegis-vault-web/dist/
+/dist/
 
 # Node
 node_modules/

@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **API not stable until 1.0.** Minor versions before 1.0 may break API.
 
+## [0.3.0] — 2026-04-08
+
+### Changed — repo layout (breaking for anyone pinned to the old paths)
+- **Flattened the repo layout** so the npm package lives at the repo root instead of `packages/aegis-vault-web/`. This makes `"github:cyberdione/aegis-vault#v0.3.0"` git-URL installation work natively in npm — npm looks for `package.json` at the clone root and cannot descend into subdirectories without external tooling.
+- `packages/aegis-vault-web/src/` → `src/`
+- `packages/aegis-vault-web/package.json` → `package.json`
+- `packages/aegis-vault-web/tsconfig.json` → `tsconfig.json`
+- `packages/aegis-vault-web/dist/` → `dist/` (gitignored, rebuilt)
+- `packages/aegis-vault-web/pkg/` → `pkg/` (gitignored, rebuilt)
+- The `packages/` directory is removed. The Rust workspace stays at `crates/aegis-vault/`. If future framework adapters (Vue, Svelte, Solid) land as separate packages, they can go back under `packages/` without conflict — the primary `@cyberdione/aegis-vault-web` package just lives at the root.
+- **`prepare` script now runs both `build:wasm` and `build:ts`** on install. Consumers that add aegis-vault as a git-URL dep get a fresh wasm + tsc build automatically (requires `cargo` + `wasm-pack` in PATH on the install machine). Runs once per install.
+- Updated `scripts/build-wasm.sh` to output to `./pkg/` instead of `./packages/aegis-vault-web/pkg/`.
+- Updated `.gitignore` to ignore `/pkg/` and `/dist/` at the root.
+
+### Why
+v0.2.0 used a monorepo-style subdirectory layout (`packages/aegis-vault-web/`) to reserve room for future framework-adapter packages. That layout broke npm git-URL installs because npm's git clone flow reads `package.json` from the clone root and has no subdirectory hint syntax. Consumers trying `"github:cyberdione/aegis-vault#v0.2.0"` got `ENOENT: no such file or directory, open '…/package.json'`.
+
+The v0.3.0 reorg flattens the primary package to the root while keeping the Rust workspace at `crates/` and leaving space for future sibling packages. Consumers can now `npm install github:cyberdione/aegis-vault#v0.3.0` successfully.
+
+### Content (unchanged from v0.2.0)
+No API changes. The Rust crate, TypeScript sources, widget, React adapter, docs, and examples are byte-identical to v0.2.0 except for paths.
+
 ## [0.2.0] — 2026-04-08
 
 ### Added

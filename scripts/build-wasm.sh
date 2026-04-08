@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 # Build the aegis-vault Rust crate to wasm via wasm-pack and drop the output
-# in packages/aegis-vault-web/pkg/. The pkg/ directory is gitignored — every
-# consumer rebuilds from source via this script (or via the npm package's
-# `npm run build:wasm` script which calls into here).
+# in ./pkg/ at the repo root. The pkg/ directory is gitignored — every
+# consumer rebuilds from source via this script (or, when consuming via git
+# URL `github:cyberdione/aegis-vault#vX.Y.Z`, via the npm postinstall hook
+# calling `npm run build:wasm`).
 #
 # Used by:
 #   - Local dev: `bash scripts/build-wasm.sh`
-#   - npm: `npm run build:wasm` from packages/aegis-vault-web/
-#   - CI: same, before publishing the npm package
+#   - npm consumers: triggered via `npm run build:wasm` from the repo root
+#   - CI: same, on every push / PR
 
 set -euo pipefail
 
@@ -19,7 +20,7 @@ if ! command -v wasm-pack >/dev/null 2>&1; then
     exit 1
 fi
 
-OUT_DIR="packages/aegis-vault-web/pkg"
+OUT_DIR="pkg"
 
 echo "Building aegis-vault → $OUT_DIR"
 RUSTFLAGS="-C target-feature=+simd128" \

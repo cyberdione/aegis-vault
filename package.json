@@ -1,12 +1,11 @@
 {
   "name": "@cyberdione/aegis-vault-web",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Encrypted browser identity vault — passphrase + WebAuthn-PRF, AES-256-GCM at rest, HSM-shaped per-purpose Ed25519 signing slots. Vanilla core + Web Component widget + optional framework adapters.",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/cyberdione/aegis-vault.git",
-    "directory": "packages/aegis-vault-web"
+    "url": "https://github.com/cyberdione/aegis-vault.git"
   },
   "type": "module",
   "main": "./dist/index.js",
@@ -39,12 +38,16 @@
     "dist",
     "pkg",
     "src",
-    "README.md"
+    "scripts/build-wasm.sh",
+    "README.md",
+    "THREATMODEL.md",
+    "CHANGELOG.md"
   ],
   "scripts": {
-    "build:wasm": "(cd ../.. && wasm-pack build crates/aegis-vault --release --target web --out-dir packages/aegis-vault-web/pkg)",
+    "build:wasm": "bash scripts/build-wasm.sh",
     "build:ts": "tsc -p tsconfig.json",
     "build": "npm run build:wasm && npm run build:ts",
+    "prepare": "npm run build",
     "clean": "rm -rf dist pkg"
   },
   "peerDependencies": {
